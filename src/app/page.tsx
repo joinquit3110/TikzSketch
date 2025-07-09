@@ -219,7 +219,7 @@ export default function Home() {
               <h1 className="text-xl font-bold hidden sm:block">
                 <span className="text-blue-600">Tikz</span>
                 <span className="text-gray-900">Sketch</span>
-                <span className="text-xs text-gray-400 font-normal ml-1">v0.1</span>
+                <span className="text-xs text-gray-400 font-normal ml-1">v0.2: Onlineeee!</span>
               </h1>
             </div>
             <span className="text-sm text-gray-500">Nguyễn Hưng's Project</span>

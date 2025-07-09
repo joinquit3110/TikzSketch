@@ -1,0 +1,17 @@
+# Development files
+*.md
+docs/
+*.log
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Cache and temporary files
+.next/cache/
+.cache/
+tmp/

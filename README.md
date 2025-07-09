@@ -153,7 +153,38 @@ TikzSketch generates clean, professional TikZ code:
 
 ---
 
-## 🎨 Screenshots
+## � Deployment
+
+### Deploy to Vercel (Recommended)
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yourusername/tikzsketch)
+
+1. **Fork** this repository
+2. **Connect** your GitHub account to [Vercel](https://vercel.com)
+3. **Import** your forked repository
+4. **Deploy** - Vercel will automatically detect Next.js and deploy!
+
+The app is optimized for Vercel with:
+- ✅ Server-side rendering (SSR) compatibility
+- ✅ Konva.js client-side only loading
+- ✅ Optimized build configuration
+- ✅ TypeScript/ESLint build errors handled
+
+### Deploy to Other Platforms
+
+```bash
+# Build for production
+npm run build
+
+# Start production server
+npm start
+```
+
+**Environment Variables:** Copy `.env.example` to `.env.local` if needed.
+
+---
+
+## �🎨 Screenshots
 
 > *Screenshots coming soon! The app features a modern, intuitive interface with a clean toolbar, interactive canvas, and real-time property editing.*
 
