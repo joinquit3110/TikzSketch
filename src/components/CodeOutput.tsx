@@ -55,7 +55,15 @@ export default function CodeOutput({ objects = [], onCopy, onExport }: CodeOutpu
 
   // Convert pixels to TikZ units (match canvas grid spacing: 28px = 1cm)
   const pixelToTikZ = (pixels: number) => {
-    return (pixels / 28).toFixed(2);
+    const value = pixels / 28;
+    // Smart formatting: integers, clean halves, or 2 decimal places
+    if (value === Math.floor(value)) {
+      return value.toFixed(0); // Integer
+    } else if (value * 2 === Math.floor(value * 2)) {
+      return value.toFixed(1); // Half-integer (0.5, 1.5, etc.)
+    } else {
+      return value.toFixed(2); // Two decimal places
+    }
   };
 
   // Convert canvas coordinates to TikZ coordinates
@@ -69,38 +77,9 @@ export default function CodeOutput({ objects = [], onCopy, onExport }: CodeOutpu
 
   // Calculate center offset based on object distribution
   const getOriginOffset = () => {
-    // FIXME: Dynamic offset causes coordinate mismatch with canvas
-    // For now, use fixed origin to match canvas coordinate system
+    // Match Canvas coordinate system: fixed origin at center (0,0)
+    // Canvas grid has origin at center, so TikZ should use same reference
     return { x: 0, y: 0 };
-    
-    /* Original dynamic offset calculation (causes positioning issues):
-    if (objects.length === 0) return { x: 0, y: 0 };
-    
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    
-    objects.forEach(obj => {
-      if (!obj.visible) return;
-      
-      if (obj.points && obj.points.length > 0) {
-        obj.points.forEach(point => {
-          minX = Math.min(minX, point.x);
-          maxX = Math.max(maxX, point.x);
-          minY = Math.min(minY, point.y);
-          maxY = Math.max(maxY, point.y);
-        });
-      } else {
-        minX = Math.min(minX, obj.position.x);
-        maxX = Math.max(maxX, obj.position.x);
-        minY = Math.min(minY, obj.position.y);
-        maxY = Math.max(maxY, obj.position.y);
-      }
-    });
-    
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-    
-    return { x: centerX, y: centerY };
-    */
   };
 
   // Generate TikZ code for a single object
@@ -161,6 +140,17 @@ export default function CodeOutput({ objects = [], onCopy, onExport }: CodeOutpu
             canvasNameX = obj.position.x + 10; // Right of point
             canvasNameY = obj.position.y - 15; // Above point
             break;
+          case 'image':
+            // Image position is top-left corner, but we want name below the image
+            canvasNameX = obj.position.x + (obj.width || 200) / 2; // Center horizontally
+            canvasNameY = obj.position.y + (obj.height || 150) + 15; // Below image
+            break;
+          case 'text':
+            // Text is centered, so position name above it
+            const fontSize = obj.fontSize || 16;
+            canvasNameX = obj.position.x;
+            canvasNameY = obj.position.y - fontSize / 2 - 15; // Above text
+            break;
           default:
             canvasNameX = obj.position.x;
             canvasNameY = obj.position.y - 15; // Above object
@@ -175,8 +165,21 @@ export default function CodeOutput({ objects = [], onCopy, onExport }: CodeOutpu
       const nameStyle = obj.nameStyle;
       let nameStyleOptions = '';
       if (nameStyle?.fontSize) {
-        const scaledNameFontSize = Math.min(nameStyle.fontSize * 1.0, 18);
-        nameStyleOptions += `, font=\\fontsize{${scaledNameFontSize}}{${scaledNameFontSize * 1.2}}\\selectfont`;
+        // Use safe font size range (8-18pt) for names to avoid LaTeX font errors
+        const scaledNameFontSize = Math.max(8, Math.min(nameStyle.fontSize * 1.0, 18));
+        
+        // Use LaTeX font size commands for better compatibility
+        let nameFontSizeCommand = '';
+        if (scaledNameFontSize <= 8) nameFontSizeCommand = '\\tiny';
+        else if (scaledNameFontSize <= 9) nameFontSizeCommand = '\\scriptsize';
+        else if (scaledNameFontSize <= 10) nameFontSizeCommand = '\\footnotesize';
+        else if (scaledNameFontSize <= 11) nameFontSizeCommand = '\\small';
+        else if (scaledNameFontSize <= 12) nameFontSizeCommand = '\\normalsize';
+        else if (scaledNameFontSize <= 14) nameFontSizeCommand = '\\large';
+        else if (scaledNameFontSize <= 17) nameFontSizeCommand = '\\Large';
+        else nameFontSizeCommand = '\\LARGE';
+        
+        nameStyleOptions += `, font=${nameFontSizeCommand}`;
       }
       if (nameStyle?.color && nameStyle.color !== '#666666') {
         nameStyleOptions += `, ${formatColor(nameStyle.color)}`;
@@ -275,19 +278,21 @@ export default function CodeOutput({ objects = [], onCopy, onExport }: CodeOutpu
         break;
 
       case 'text':
-        const text = obj.text || 'Text';
-        // Scale font size to match canvas appearance (max 24pt to avoid font errors)
-        const scaledFontSize = Math.min((obj.fontSize || 16) * 1.0, 24);
+        let text = obj.text || 'Text';
+        const fontSize = obj.fontSize || 16;
         
-        // Build node options following TikZ best practices
+        // Build node options
         let nodeOptions = [];
         
         // Add color
         if (strokeColor) nodeOptions.push(strokeColor);
         
-        // Add font styling using TikZ font options
-        if (obj.fontSize) {
-          nodeOptions.push(`font=\\fontsize{${scaledFontSize}}{${scaledFontSize * 1.2}}\\selectfont`);
+        // Use exact font size with \fontsize for precise matching
+        if (fontSize) {
+          // Use 1:1 mapping for better visual consistency (Canvas pixels ≈ LaTeX points)
+          const fontSizePt = fontSize.toFixed(1);
+          const lineHeightPt = (fontSize * 1.2).toFixed(1);
+          nodeOptions.push(`font=\\fontsize{${fontSizePt}pt}{${lineHeightPt}pt}\\selectfont`);
         }
         
         // Build text content with styling
@@ -295,6 +300,11 @@ export default function CodeOutput({ objects = [], onCopy, onExport }: CodeOutpu
         if (obj.fontWeight === 'bold') styledText = `\\textbf{${styledText}}`;
         if (obj.fontStyle === 'italic') styledText = `\\textit{${styledText}}`;
         if (obj.textDecoration === 'underline') styledText = `\\uline{${styledText}}`;
+        // Nếu là math mode thì bọc $...$
+        if (obj.isMath) styledText = `$${text}$`;
+        
+        // Remove anchor to use LaTeX default positioning
+        // nodeOptions.push('anchor=mid');
         
         const nodeOptionsStr = nodeOptions.length > 0 ? `[${nodeOptions.join(', ')}]` : '';
         code = `  \\node${nodeOptionsStr} at (${x},${y}) {${styledText}};\n`;
@@ -336,6 +346,52 @@ export default function CodeOutput({ objects = [], onCopy, onExport }: CodeOutpu
         code = `  \\fill[${strokeColor}] (${x},${y}) circle (${((obj.strokeWidth || 2) * 0.6).toFixed(1)}pt);\n`;
         break;
 
+      case 'image':
+        if (obj.width && obj.height) {
+          const width = pixelToTikZ(obj.width);
+          const height = pixelToTikZ(obj.height);
+          
+          // Canvas now stores position as top-left corner but renders with center rotation
+          // We need to calculate the actual center position that Canvas displays
+          const canvasCenterX = obj.position.x + obj.width / 2;  // Canvas center X
+          const canvasCenterY = obj.position.y + obj.height / 2; // Canvas center Y
+          
+          // Convert to TikZ coordinates: just unit conversion and Y-flip
+          const centerX = pixelToTikZ(canvasCenterX - offset.x);
+          const centerY = pixelToTikZ(-(canvasCenterY - offset.y)); // Flip Y-axis for mathematical coordinates
+          
+          // Use the actual filename from upload
+          const filename = obj.imageUrl || `${obj.name}.png`;
+          
+          // Build image options
+          let imageOptions = [];
+          if (obj.rotation && obj.rotation !== 0) {
+            // Canvas: Y-axis down, clockwise rotation = positive
+            // TikZ: Y-axis up, counter-clockwise rotation = positive
+            // Need to negate rotation to match coordinate systems
+            const tikzRotation = -obj.rotation;
+            imageOptions.push(`rotate=${tikzRotation}`);
+          }
+          if (obj.scaleX && obj.scaleX !== 1) {
+            imageOptions.push(`xscale=${obj.scaleX.toFixed(2)}`);
+          }
+          if (obj.scaleY && obj.scaleY !== 1) {
+            imageOptions.push(`yscale=${obj.scaleY.toFixed(2)}`);
+          }
+          if (obj.flipX) {
+            imageOptions.push('xscale=-1');
+          }
+          if (obj.flipY) {
+            imageOptions.push('yscale=-1');
+          }
+          
+          const optionsStr = imageOptions.length > 0 ? `[${imageOptions.join(', ')}]` : '';
+          
+          // Generate LaTeX code for image inclusion
+          code = `  \\node${optionsStr} at (${centerX},${centerY}) {\\includegraphics[width=${width}cm,height=${height}cm]{${filename}}};\n`;
+        }
+        break;
+
       default:
         code = `  % Unsupported object type: ${obj.type}\n`;
     }
@@ -365,31 +421,94 @@ export default function CodeOutput({ objects = [], onCopy, onExport }: CodeOutpu
       const objX = obj.position.x;
       const objY = obj.position.y;
 
+      // Also consider name labels in bounds calculation
+      let nameExtents = { minX: objX, maxX: objX, minY: objY, maxY: objY };
+      if (obj.showName) {
+        let nameX: number, nameY: number;
+        
+        if (obj.namePosition) {
+          nameX = objX + obj.namePosition.x;
+          nameY = objY + obj.namePosition.y;
+        } else {
+          // Calculate default name position (same logic as in generateNameLabel)
+          switch (obj.type) {
+            case 'circle':
+              nameX = objX;
+              nameY = objY - (obj.radius || 30) - 20;
+              break;
+            case 'rectangle':
+              nameX = objX + (obj.width || 80) + 10;
+              nameY = objY + (obj.height || 60) / 2;
+              break;
+            case 'point':
+              nameX = objX + 10;
+              nameY = objY - 15;
+              break;
+            case 'image':
+              nameX = objX + (obj.width || 200) / 2;
+              nameY = objY + (obj.height || 150) + 15;
+              break;
+            case 'text':
+              const fontSize = obj.fontSize || 16;
+              nameX = objX;
+              nameY = objY - fontSize / 2 - 15;
+              break;
+            default:
+              nameX = objX;
+              nameY = objY - 15;
+          }
+        }
+        
+        // Better name text size estimation
+        const nameLength = obj.name?.length || 4;
+        const fontSize = obj.nameStyle?.fontSize || 12;
+        const nameWidth = nameLength * fontSize * 0.7; // More accurate multiplier
+        const nameHeight = fontSize * 1.2; // Account for line height
+        
+        // Name bounds with proper padding
+        nameExtents.minX = Math.min(nameExtents.minX, nameX - nameWidth/2);
+        nameExtents.maxX = Math.max(nameExtents.maxX, nameX + nameWidth/2);
+        nameExtents.minY = Math.min(nameExtents.minY, nameY - nameHeight/2); // Center vertically
+        nameExtents.maxY = Math.max(nameExtents.maxY, nameY + nameHeight/2);
+      }
+
       // Calculate precise object bounds based on type using direct Canvas coordinates
       switch (obj.type) {
         case 'circle':
           const radius = obj.radius || 30;
-          minX = Math.min(minX, objX - radius);
-          maxX = Math.max(maxX, objX + radius);
-          minY = Math.min(minY, objY - radius);
-          maxY = Math.max(maxY, objY + radius);
+          minX = Math.min(minX, objX - radius, nameExtents.minX);
+          maxX = Math.max(maxX, objX + radius, nameExtents.maxX);
+          minY = Math.min(minY, objY - radius, nameExtents.minY);
+          maxY = Math.max(maxY, objY + radius, nameExtents.maxY);
           break;
         
         case 'rectangle':
           const width = obj.width || 80;
           const height = obj.height || 60;
           // Rectangle position is top-left corner in Canvas coordinates
-          minX = Math.min(minX, objX);
-          maxX = Math.max(maxX, objX + width);
-          minY = Math.min(minY, objY);
-          maxY = Math.max(maxY, objY + height);
+          minX = Math.min(minX, objX, nameExtents.minX);
+          maxX = Math.max(maxX, objX + width, nameExtents.maxX);
+          minY = Math.min(minY, objY, nameExtents.minY);
+          maxY = Math.max(maxY, objY + height, nameExtents.maxY);
           break;
         
+        case 'point':
+        case 'midpoint':
+          // Points have small radius based on strokeWidth
+          const pointRadius = (obj.strokeWidth || 2) * 0.6;
+          minX = Math.min(minX, objX - pointRadius, nameExtents.minX);
+          maxX = Math.max(maxX, objX + pointRadius, nameExtents.maxX);
+          minY = Math.min(minY, objY - pointRadius, nameExtents.minY);
+          maxY = Math.max(maxY, objY + pointRadius, nameExtents.maxY);
+          break;
+
         case 'line':
         case 'polygon':
         case 'angle':
         case 'perpendicular':
         case 'parallel':
+        case 'perp_bisector':
+        case 'function':
           if (obj.points && obj.points.length > 0) {
             obj.points.forEach(point => {
               minX = Math.min(minX, point.x);
@@ -404,25 +523,74 @@ export default function CodeOutput({ objects = [], onCopy, onExport }: CodeOutpu
             minY = Math.min(minY, objY);
             maxY = Math.max(maxY, objY);
           }
+          // Include name bounds
+          minX = Math.min(minX, nameExtents.minX);
+          maxX = Math.max(maxX, nameExtents.maxX);
+          minY = Math.min(minY, nameExtents.minY);
+          maxY = Math.max(maxY, nameExtents.maxY);
           break;
         
         case 'text':
-          // Approximate text bounds based on font size
+        case 'distance':
+          // Approximate text bounds based on font size - center like LaTeX node
           const fontSize = obj.fontSize || 16;
           const textWidth = (obj.text?.length || 4) * fontSize * 0.6;
           const textHeight = fontSize;
-          minX = Math.min(minX, objX);
-          maxX = Math.max(maxX, objX + textWidth);
-          minY = Math.min(minY, objY - textHeight);
-          maxY = Math.max(maxY, objY);
+          
+          // Text is centered at position
+          const textCenterX = objX;
+          const textCenterY = objY;
+          
+          minX = Math.min(minX, textCenterX - textWidth/2, nameExtents.minX);
+          maxX = Math.max(maxX, textCenterX + textWidth/2, nameExtents.maxX);
+          minY = Math.min(minY, textCenterY - textHeight/2, nameExtents.minY);
+          maxY = Math.max(maxY, textCenterY + textHeight/2, nameExtents.maxY);
+          break;
+        
+        case 'image':
+          const imageWidth = obj.width || 200;
+          const imageHeight = obj.height || 150;
+          
+          // Use same logic as generateObjectCode: position is top-left corner
+          const scaleX = Math.abs((obj.scaleX || 1) * (obj.flipX ? -1 : 1));
+          const scaleY = Math.abs((obj.scaleY || 1) * (obj.flipY ? -1 : 1));
+          
+          // For bounds calculation, use the envelope of rotated rectangle
+          // Use negated rotation to match TikZ coordinate system
+          const rotation = -(obj.rotation || 0) * Math.PI / 180; // Same negation as generateObjectCode
+          const cos = Math.abs(Math.cos(rotation));
+          const sin = Math.abs(Math.sin(rotation));
+          
+          // Scaled dimensions
+          const scaledWidth = imageWidth * scaleX;
+          const scaledHeight = imageHeight * scaleY;
+          
+          // Envelope of rotated rectangle (conservative bounds)
+          const envelopeWidth = scaledWidth * cos + scaledHeight * sin;
+          const envelopeHeight = scaledWidth * sin + scaledHeight * cos;
+          
+          // Calculate center point in Canvas coordinates (same as generateObjectCode)
+          const canvasCenterX = objX + imageWidth / 2;
+          const canvasCenterY = objY + imageHeight / 2;
+          
+          // Bounds around center in Canvas coordinates  
+          const imageMinX = canvasCenterX - envelopeWidth / 2;
+          const imageMaxX = canvasCenterX + envelopeWidth / 2;
+          const imageMinY = canvasCenterY - envelopeHeight / 2;
+          const imageMaxY = canvasCenterY + envelopeHeight / 2;
+          
+          minX = Math.min(minX, imageMinX, nameExtents.minX);
+          maxX = Math.max(maxX, imageMaxX, nameExtents.maxX);
+          minY = Math.min(minY, imageMinY, nameExtents.minY);
+          maxY = Math.max(maxY, imageMaxY, nameExtents.maxY);
           break;
         
         default:
           // Default case for other object types
-          minX = Math.min(minX, objX);
-          maxX = Math.max(maxX, objX);
-          minY = Math.min(minY, objY);
-          maxY = Math.max(maxY, objY);
+          minX = Math.min(minX, objX, nameExtents.minX);
+          maxX = Math.max(maxX, objX, nameExtents.maxX);
+          minY = Math.min(minY, objY, nameExtents.minY);
+          maxY = Math.max(maxY, objY, nameExtents.maxY);
       }
 
       // Collect natural boundary values for coordinate detection (using Canvas coordinates first)
@@ -443,6 +611,9 @@ export default function CodeOutput({ objects = [], onCopy, onExport }: CodeOutpu
 
     // Convert final bounds from Canvas coordinates to TikZ coordinates
     if (hasVisibleObjects) {
+      // Use the same offset calculation as generateObjectCode for consistency
+      const offset = getOriginOffset();
+      
       // Convert X coordinates directly
       const tikzMinX = parseFloat(pixelToTikZ(minX - offset.x));
       const tikzMaxX = parseFloat(pixelToTikZ(maxX - offset.x));
@@ -464,25 +635,10 @@ export default function CodeOutput({ objects = [], onCopy, onExport }: CodeOutpu
     const hasNaturalCoords = naturalBoundaries.length > 0 && 
       naturalBoundaries.every(coord => Number.isInteger(coord) || (coord * 2) % 1 === 0);
     
-    // Base padding: adaptive based on object density and natural coordinates
-    let paddingFactorX, paddingFactorY;
-    
-    if (hasNaturalCoords && rangeX < 6 && rangeY < 6) {
-      // For natural coordinates in small range, use minimal padding
-      paddingFactorX = paddingFactorY = 0.15;
-    } else if (rangeX < 2 || rangeY < 2) {
-      // For very small objects, use generous padding
-      paddingFactorX = paddingFactorY = 0.4;
-    } else if (rangeX < 10 || rangeY < 10) {
-      // For medium objects, moderate padding
-      paddingFactorX = paddingFactorY = 0.25;
-    } else {
-      // For large objects, minimal padding
-      paddingFactorX = paddingFactorY = 0.15;
-    }
-    
-    const paddingX = Math.max(hasNaturalCoords ? 0.3 : 0.5, rangeX * paddingFactorX);
-    const paddingY = Math.max(hasNaturalCoords ? 0.3 : 0.5, rangeY * paddingFactorY);
+    // Simplified adaptive padding - just add reasonable margins
+    const basePadding = 1.0; // Standard padding
+    const paddingX = Math.max(basePadding, rangeX * 0.1); // 10% of range, minimum 1 unit
+    const paddingY = Math.max(basePadding, rangeY * 0.1);
 
     // Apply padding
     minX -= paddingX;
@@ -490,96 +646,51 @@ export default function CodeOutput({ objects = [], onCopy, onExport }: CodeOutpu
     minY -= paddingY;
     maxY += paddingY;
 
-    // Make bounds symmetric around origin if objects are roughly centered or have natural coordinates
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-    
-    // More aggressive symmetry for natural coordinates
-    const symmetryThreshold = hasNaturalCoords ? 1.5 : 1;
-    
-    // Make symmetric if center is close to origin or if we have natural coordinates in symmetric pattern
-    if (Math.abs(centerX) < symmetryThreshold && Math.abs(centerY) < symmetryThreshold) {
-      const maxRangeX = Math.max(Math.abs(minX), Math.abs(maxX));
-      const maxRangeY = Math.max(Math.abs(minY), Math.abs(maxY));
+    // Smart rounding for clean grid bounds
+    const roundToNice = (value: number, isMin: boolean) => {
+      const absValue = Math.abs(value);
+      let step;
       
-      // For natural coordinates, prefer round numbers
-      if (hasNaturalCoords) {
-        const roundedRangeX = Math.ceil(maxRangeX);
-        const roundedRangeY = Math.ceil(maxRangeY);
-        minX = -roundedRangeX;
-        maxX = roundedRangeX;
-        minY = -roundedRangeY;
-        maxY = roundedRangeY;
+      if (absValue < 1) step = 0.5;
+      else if (absValue < 5) step = 1;
+      else if (absValue < 20) step = 2;
+      else if (absValue < 100) step = 5;
+      else step = 10;
+      
+      if (isMin) {
+        return Math.floor(value / step) * step;
       } else {
-        minX = -maxRangeX;
-        maxX = maxRangeX;
-        minY = -maxRangeY;
-        maxY = maxRangeY;
+        return Math.ceil(value / step) * step;
       }
-    }
-
-    // Detect common geometric patterns for optimal bounds
-    const detectGeometricPattern = () => {
-      if (naturalBoundaries.length >= 6) {
-        const uniqueCoords = [...new Set(naturalBoundaries.map(c => Math.round(c * 2) / 2))].sort((a, b) => a - b);
-        
-        // Square/rectangular grid pattern
-        if (uniqueCoords.length <= 6 && uniqueCoords.every(c => c === Math.round(c))) {
-          const range = uniqueCoords[uniqueCoords.length - 1] - uniqueCoords[0];
-          if (range <= 6) {
-            return {
-              type: 'geometric',
-              suggestedMinX: uniqueCoords[0] - 1,
-              suggestedMaxX: uniqueCoords[uniqueCoords.length - 1] + 1,
-              suggestedMinY: uniqueCoords[0] - 1,
-              suggestedMaxY: uniqueCoords[uniqueCoords.length - 1] + 1
-            };
-          }
-        }
-      }
-      return null;
     };
     
-    const pattern = detectGeometricPattern();
-    
-    // Round to nice numbers for clean grid
-    let finalMinX, finalMaxX, finalMinY, finalMaxY;
-    
-    if (pattern && hasNaturalCoords) {
-      // Use geometric pattern suggestions
-      finalMinX = pattern.suggestedMinX;
-      finalMaxX = pattern.suggestedMaxX;
-      finalMinY = pattern.suggestedMinY;
-      finalMaxY = pattern.suggestedMaxY;
-    } else {
-      // Standard rounding
-      finalMinX = Math.floor(minX * 2) / 2; // Round to 0.5
-      finalMaxX = Math.ceil(maxX * 2) / 2;
-      finalMinY = Math.floor(minY * 2) / 2;
-      finalMaxY = Math.ceil(maxY * 2) / 2;
-    }
+    const finalMinX = roundToNice(minX, true);
+    const finalMaxX = roundToNice(maxX, false);
+    const finalMinY = roundToNice(minY, true);
+    const finalMaxY = roundToNice(maxY, false);
 
-    // Ensure minimum size (at least 2x2 grid)
+    // Ensure minimum reasonable size
     const finalRangeX = finalMaxX - finalMinX;
     const finalRangeY = finalMaxY - finalMinY;
+    const minRange = 4; // Minimum 4 units range
     
-    if (finalRangeX < 2) {
+    if (finalRangeX < minRange) {
       const midX = (finalMinX + finalMaxX) / 2;
-      return {
-        minX: midX - 1,
-        maxX: midX + 1,
-        minY: finalRangeY < 2 ? -1 : finalMinY,
-        maxY: finalRangeY < 2 ? 1 : finalMaxY
+      return { 
+        minX: midX - minRange/2, 
+        maxX: midX + minRange/2, 
+        minY: finalMinY, 
+        maxY: finalMaxY 
       };
     }
     
-    if (finalRangeY < 2) {
+    if (finalRangeY < minRange) {
       const midY = (finalMinY + finalMaxY) / 2;
-      return {
-        minX: finalMinX,
-        maxX: finalMaxX,
-        minY: midY - 1,
-        maxY: midY + 1
+      return { 
+        minX: finalMinX, 
+        maxX: finalMaxX, 
+        minY: midY - minRange/2, 
+        maxY: midY + minRange/2 
       };
     }
 
@@ -638,11 +749,14 @@ export default function CodeOutput({ objects = [], onCopy, onExport }: CodeOutpu
   const generateTikZCode = () => {
     const colorDefinitions = generateColorDefinitions();
     
+    // Check if any images exist to include graphicx package
+    const hasImages = objects.some(obj => obj.type === 'image' && obj.visible);
+    
     const header = showDocumentWrapper ? 
       `\\documentclass[tikz,border=10pt]{standalone}
 \\usepackage{tikz}
 \\usepackage{xcolor}
-\\usepackage{ulem}
+\\usepackage{ulem}${hasImages ? '\n\\usepackage{graphicx}' : ''}
 \\usetikzlibrary{arrows.meta}
 \\usetikzlibrary{shapes.geometric}
 \\usetikzlibrary{calc}
@@ -665,13 +779,21 @@ ${colorDefinitions ? colorDefinitions + '\n' : ''}\\begin{document}
       const rangeX = bounds.maxX - bounds.minX;
       const rangeY = bounds.maxY - bounds.minY;
       
-      // Determine appropriate grid step
+      // Determine appropriate grid step - aim for 8-15 grid lines
       const getGridStep = (range: number) => {
-        if (range <= 6) return 0.5;
-        if (range <= 12) return 1;
-        if (range <= 30) return 2;
-        if (range <= 60) return 5;
-        return 10;
+        const targetLines = 10; // Target number of grid lines
+        const roughStep = range / targetLines;
+        
+        // Round to nice numbers
+        if (roughStep <= 0.25) return 0.25;
+        if (roughStep <= 0.5) return 0.5;
+        if (roughStep <= 1) return 1;
+        if (roughStep <= 2) return 2;
+        if (roughStep <= 5) return 5;
+        if (roughStep <= 10) return 10;
+        if (roughStep <= 20) return 20;
+        if (roughStep <= 50) return 50;
+        return Math.ceil(roughStep / 10) * 10; // Round up to nearest 10
       };
       
       const stepX = getGridStep(rangeX);
@@ -683,37 +805,62 @@ ${colorDefinitions ? colorDefinitions + '\n' : ''}\\begin{document}
       const gridMinY = Math.floor(bounds.minY / stepY) * stepY;
       const gridMaxY = Math.ceil(bounds.maxY / stepY) * stepY;
       
-      // Check if origin is within bounds
-      const showOrigin = bounds.minX <= 0 && bounds.maxX >= 0 && bounds.minY <= 0 && bounds.maxY >= 0;
+      // Smart logic for showing coordinate system
+      const originInBounds = bounds.minX <= 0 && bounds.maxX >= 0 && bounds.minY <= 0 && bounds.maxY >= 0;
+      const originNearBounds = Math.abs(bounds.minX) <= 2 || Math.abs(bounds.maxX) <= 2 || 
+                               Math.abs(bounds.minY) <= 2 || Math.abs(bounds.maxY) <= 2;
+      const showAxes = originInBounds || originNearBounds;
       
       coordinateSystem = `
   
   % Smart coordinate system`;
 
+      // Format coordinate values consistently
+      const formatCoord = (value: number) => {
+        if (value === Math.floor(value)) {
+          return value.toFixed(0);
+        } else if (value * 2 === Math.floor(value * 2)) {
+          return value.toFixed(1);
+        } else {
+          return value.toFixed(2);
+        }
+      };
+
       // Add minor grid for fine details
       if (stepX >= 1 && stepY >= 1) {
         coordinateSystem += `
-  \\draw[gray!15, very thin] (${gridMinX},${gridMinY}) grid[step=0.5] (${gridMaxX},${gridMaxY});`;
+  \\draw[gray!15, very thin] (${formatCoord(gridMinX)},${formatCoord(gridMinY)}) grid[step=0.5] (${formatCoord(gridMaxX)},${formatCoord(gridMaxY)});`;
       }
 
       // Main grid with adaptive step
       coordinateSystem += `
-  \\draw[gray!25, thin] (${gridMinX},${gridMinY}) grid[${stepX === stepY ? `step=${stepX}` : `xstep=${stepX}, ystep=${stepY}`}] (${gridMaxX},${gridMaxY});`;
+  \\draw[gray!25, thin] (${formatCoord(gridMinX)},${formatCoord(gridMinY)}) grid[${stepX === stepY ? `step=${formatCoord(stepX)}` : `xstep=${formatCoord(stepX)}, ystep=${formatCoord(stepY)}`}] (${formatCoord(gridMaxX)},${formatCoord(gridMaxY)});`;
 
-      // Axes with smart endpoints
-      const axisMinX = Math.max(gridMinX, bounds.minX - 0.2);
-      const axisMaxX = Math.min(gridMaxX, bounds.maxX + 0.2);
-      const axisMinY = Math.max(gridMinY, bounds.minY - 0.2);
-      const axisMaxY = Math.min(gridMaxY, bounds.maxY + 0.2);
+      // Smart axis drawing with equal margins from grid boundaries
       
-      if (showOrigin) {
+      // Standard margin from grid edges
+      const axisMargin = Math.min(stepX, stepY) * 0.3; // 30% of grid step as margin
+      
+      // X-axis: Draw if Y=0 line passes through bounds, span full grid with equal margins
+      if (bounds.minY <= 0 && bounds.maxY >= 0) {
+        const axisMinX = gridMinX + axisMargin;
+        const axisMaxX = gridMaxX - axisMargin;
+        
         coordinateSystem += `
-  \\draw[->] (${axisMinX},0) -- (${axisMaxX},0) node[right] {$x$};
-  \\draw[->] (0,${axisMinY}) -- (0,${axisMaxY}) node[above] {$y$};`;
+  \\draw[->] (${formatCoord(axisMinX)},0) -- (${formatCoord(axisMaxX)},0) node[right] {$x$};`;
+      }
+      
+      // Y-axis: Draw if X=0 line passes through bounds, span full grid with equal margins
+      if (bounds.minX <= 0 && bounds.maxX >= 0) {
+        const axisMinY = gridMinY + axisMargin;
+        const axisMaxY = gridMaxY - axisMargin;
+        
+        coordinateSystem += `
+  \\draw[->] (0,${formatCoord(axisMinY)}) -- (0,${formatCoord(axisMaxY)}) node[above] {$y$};`;
       }
 
-      // Origin point with smart positioning
-      if (showOrigin) {
+      // Origin point with smart positioning (only if origin is actually in bounds)
+      if (originInBounds) {
         const originLabelPos = bounds.minX > -0.5 && bounds.minY > -0.5 ? 'above right' : 
                               bounds.maxX < 0.5 && bounds.minY > -0.5 ? 'above left' :
                               bounds.minX > -0.5 && bounds.maxY < 0.5 ? 'below right' : 'below left';
@@ -721,36 +868,80 @@ ${colorDefinitions ? colorDefinitions + '\n' : ''}\\begin{document}
   \\fill (0,0) circle (1pt) node[${originLabelPos}] {$O$};`;
       }
 
-      // Add tick marks and labels for major grid lines
-      if (stepX >= 1 && stepY >= 1) {
-        const ticksX = [];
-        const ticksY = [];
+      // Smart tick marks and labels
+      
+      // X-axis ticks (only when Y=0 line is in bounds)
+      if (bounds.minY <= 0 && bounds.maxY >= 0) {
+        // Use the same axis bounds as the X-axis line
+        const axisMinX = gridMinX + axisMargin;
+        const axisMaxX = gridMaxX - axisMargin;
+        const xAxisRange = axisMaxX - axisMinX;
         
-        for (let x = gridMinX; x <= gridMaxX; x += stepX) {
-          if (Math.abs(x) >= stepX && x >= bounds.minX && x <= bounds.maxX) {
+        // Determine tick spacing - aim for 8-12 ticks on the visible axis
+        const targetTicks = 10;
+        const roughTickSpacing = xAxisRange / targetTicks;
+        
+        // Round to nice numbers
+        let tickSpacingX;
+        if (roughTickSpacing <= 0.25) tickSpacingX = 0.25;
+        else if (roughTickSpacing <= 0.5) tickSpacingX = 0.5;
+        else if (roughTickSpacing <= 1) tickSpacingX = 1;
+        else if (roughTickSpacing <= 2) tickSpacingX = 2;
+        else if (roughTickSpacing <= 5) tickSpacingX = 5;
+        else tickSpacingX = Math.ceil(roughTickSpacing);
+        
+        // Generate ticks within axis bounds
+        const ticksX = [];
+        const startTick = Math.ceil(axisMinX / tickSpacingX) * tickSpacingX;
+        
+        for (let x = startTick; x <= axisMaxX; x += tickSpacingX) {
+          if (Math.abs(x) >= tickSpacingX * 0.1) { // Avoid zero tick
             ticksX.push(x);
           }
         }
         
-        for (let y = gridMinY; y <= gridMaxY; y += stepY) {
-          if (Math.abs(y) >= stepY && y >= bounds.minY && y <= bounds.maxY) {
+        if (ticksX.length > 0) {
+          ticksX.forEach(x => {
+            coordinateSystem += `
+  \\draw (${formatCoord(x)},0) +(0,-1.5pt) -- +(0,1.5pt) node[below] {\\footnotesize $${formatCoord(x)}$};`;
+          });
+        }
+      }
+      
+      // Y-axis ticks (only when X=0 line is in bounds)
+      if (bounds.minX <= 0 && bounds.maxX >= 0) {
+        // Use the same axis bounds as the Y-axis line
+        const axisMinY = gridMinY + axisMargin;
+        const axisMaxY = gridMaxY - axisMargin;
+        const yAxisRange = axisMaxY - axisMinY;
+        
+        // Determine tick spacing - aim for 8-12 ticks on the visible axis
+        const targetTicks = 10;
+        const roughTickSpacing = yAxisRange / targetTicks;
+        
+        // Round to nice numbers
+        let tickSpacingY;
+        if (roughTickSpacing <= 0.25) tickSpacingY = 0.25;
+        else if (roughTickSpacing <= 0.5) tickSpacingY = 0.5;
+        else if (roughTickSpacing <= 1) tickSpacingY = 1;
+        else if (roughTickSpacing <= 2) tickSpacingY = 2;
+        else if (roughTickSpacing <= 5) tickSpacingY = 5;
+        else tickSpacingY = Math.ceil(roughTickSpacing);
+        
+        // Generate ticks within axis bounds
+        const ticksY = [];
+        const startTick = Math.ceil(axisMinY / tickSpacingY) * tickSpacingY;
+        
+        for (let y = startTick; y <= axisMaxY; y += tickSpacingY) {
+          if (Math.abs(y) >= tickSpacingY * 0.1) { // Avoid zero tick
             ticksY.push(y);
           }
         }
         
-        if (showOrigin && ticksX.length > 0) {
-          coordinateSystem += ``;
-          ticksX.forEach(x => {
-            coordinateSystem += `
-  \\draw (${x},0) +(0,-1.5pt) -- +(0,1.5pt) node[below] {\\footnotesize $${x === Math.floor(x) ? x : x.toFixed(1)}$};`;
-          });
-        }
-        
-        if (showOrigin && ticksY.length > 0) {
-          coordinateSystem += ``;
+        if (ticksY.length > 0) {
           ticksY.forEach(y => {
             coordinateSystem += `
-  \\draw (0,${y}) +(-1.5pt,0) -- +(1.5pt,0) node[left] {\\footnotesize $${y === Math.floor(y) ? y : y.toFixed(1)}$};`;
+  \\draw (0,${formatCoord(y)}) +(-1.5pt,0) -- +(1.5pt,0) node[left] {\\footnotesize $${formatCoord(y)}$};`;
           });
         }
       }

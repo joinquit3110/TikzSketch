@@ -4,8 +4,6 @@
 
 <img src="./public/logo.png" alt="" width="120" height="120" style="border-radius: 20px;">
 
-*Interactive LaTeX TikZ Drawing Application*
-
 [![Next.js](https://img.shields.io/badge/Next.js-15.3.5-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19.0-61DAFB?style=for-the-badge&logo=react)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
@@ -86,9 +84,9 @@ npm run dev
 | `P` | 📍 Point     | `Ctrl+Y` | ↪️ Redo |
 | `L` | 📏 Line      | `Ctrl+A` | 🎯 Select All |
 | `R` | ⬜ Rectangle | `Delete` | 🗑️ Delete |
-| `C` | ⭕ Circle    | `Escape` | ❌ Cancel |
-| `G` | 🔺 Polygon   | `Enter` | ✅ Finish Polygon |
-| `T` | 📝 Text      |         |                    |
+| `C` | ⭕ Circle    | `Escape` | ❌ Cancel         |
+| `G` | 🔺 Polygon   | `Enter`  | ✅ Finish Polygon |
+| `T` | 📝 Text      |          |                   |
 
 ### Advanced Constructions
 - `Q` - ⊥ Perpendicular lines

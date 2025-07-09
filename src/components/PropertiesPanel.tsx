@@ -11,7 +11,7 @@ import { Bold, Italic, Underline, Type, AlignLeft } from 'lucide-react';
 
 interface ObjectProperties {
   id: string;
-  type: 'point' | 'line' | 'rectangle' | 'circle' | 'text' | 'polygon' | 'angle' | 'perpendicular' | 'parallel' | 'midpoint' | 'distance' | 'perp_bisector' | 'function';
+  type: 'point' | 'line' | 'rectangle' | 'circle' | 'text' | 'polygon' | 'angle' | 'perpendicular' | 'parallel' | 'midpoint' | 'distance' | 'perp_bisector' | 'function' | 'image';
   name: string;
   x: number;
   y: number;
@@ -49,6 +49,14 @@ interface ObjectProperties {
   arrowEnd?: 'none' | 'arrow' | 'stealth' | 'latex';
   // Points for lines and polygons
   points?: Array<{ x: number; y: number }>;
+  // Image properties
+  rotation?: number;
+  scaleX?: number;
+  scaleY?: number;
+  flipX?: boolean;
+  flipY?: boolean;
+  originalWidth?: number;
+  originalHeight?: number;
 }
 
 interface PropertiesPanelProps {
@@ -284,7 +292,7 @@ export default function PropertiesPanel({
                     ...properties.nameStyle,
                     fontSize: value[0]
                   })}
-                  max={24}
+                  max={18}
                   min={8}
                   step={1}
                   className="mt-1"
@@ -503,8 +511,90 @@ export default function PropertiesPanel({
         </Card>
       )}
 
+      {/* Image Transform Properties */}
+      {properties.type === 'image' && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Image Transform</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* Rotation */}
+            <div>
+              <Label className="text-xs">Rotation: {(properties.rotation || 0).toFixed(0)}°</Label>
+              <Slider
+                value={[properties.rotation || 0]}
+                onValueChange={(value) => handleSliderUpdate('rotation', value[0])}
+                max={360}
+                min={-360}
+                step={1}
+                className="mt-2"
+              />
+            </div>
+            
+            {/* Scale */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Scale X: {(properties.scaleX || 1).toFixed(2)}</Label>
+                <Slider
+                  value={[properties.scaleX || 1]}
+                  onValueChange={(value) => handleSliderUpdate('scaleX', value[0])}
+                  max={3}
+                  min={0.01}
+                  step={0.01}
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Scale Y: {(properties.scaleY || 1).toFixed(2)}</Label>
+                <Slider
+                  value={[properties.scaleY || 1]}
+                  onValueChange={(value) => handleSliderUpdate('scaleY', value[0])}
+                  max={3}
+                  min={0.01}
+                  step={0.01}
+                  className="mt-2"
+                />
+              </div>
+            </div>
+            
+            {/* Flip buttons */}
+            <div>
+              <Label className="text-xs">Flip</Label>
+              <div className="mt-1 grid grid-cols-2 gap-1">
+                <Button
+                  variant={properties.flipX ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handlePropertyUpdate('flipX', !properties.flipX)}
+                  className="h-7 text-xs"
+                >
+                  Flip X
+                </Button>
+                <Button
+                  variant={properties.flipY ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handlePropertyUpdate('flipY', !properties.flipY)}
+                  className="h-7 text-xs"
+                >
+                  Flip Y
+                </Button>
+              </div>
+            </div>
+            
+            {/* Image Info */}
+            {properties.originalWidth && properties.originalHeight && (
+              <div>
+                <Label className="text-xs text-gray-600">Original Size</Label>
+                <div className="p-2 bg-gray-50 rounded text-xs">
+                  {properties.originalWidth} × {properties.originalHeight} px
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Appearance */}
-      {properties.type !== 'text' && (
+      {properties.type !== 'text' && properties.type !== 'image' && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Appearance</CardTitle>
@@ -667,7 +757,7 @@ export default function PropertiesPanel({
               <Slider
                 value={[properties.fontSize || 16]}
                 onValueChange={(value) => handlePropertyUpdate('fontSize', value[0])}
-                max={48}
+                max={20}
                 min={8}
                 step={1}
                 className="mt-2"

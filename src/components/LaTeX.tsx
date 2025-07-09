@@ -23,7 +23,6 @@ export default function LaTeX({ children, displayMode = false, className = '', s
           strict: false,
         });
       } catch (error) {
-        console.warn('LaTeX rendering error:', error);
         // Fallback to plain text
         if (containerRef.current) {
           containerRef.current.textContent = children;

@@ -141,6 +141,10 @@ export default function Home() {
         case 'T':
           setActiveTool('text');
           break;
+        case 'i':
+        case 'I':
+          setActiveTool('image');
+          break;
         case 'q':
         case 'Q':
           setActiveTool('perpendicular');
@@ -191,12 +195,10 @@ export default function Home() {
 
   const handleExport = () => {
     // This will be handled by CodeOutput component
-    console.log('Export triggered');
   };
 
   const handleCopy = () => {
     // This will be handled by CodeOutput component
-    console.log('Copy triggered');
   };
 
    return (
@@ -217,9 +219,10 @@ export default function Home() {
               <h1 className="text-xl font-bold hidden sm:block">
                 <span className="text-blue-600">Tikz</span>
                 <span className="text-gray-900">Sketch</span>
+                <span className="text-xs text-gray-400 font-normal ml-1">v0.1</span>
               </h1>
             </div>
-            <span className="text-sm text-gray-500">JQ's Project</span>
+            <span className="text-sm text-gray-500">Nguyễn Hưng's Project</span>
             <div className="text-xs text-gray-400">
               Objects: {objects.length} | Selected: {selectedObjectIds.length}
             </div>

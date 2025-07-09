@@ -10,7 +10,7 @@ export interface Point {
 
 export interface DrawingObject {
   id: string;
-  type: 'point' | 'line' | 'rectangle' | 'circle' | 'text' | 'polygon' | 'angle' | 'perpendicular' | 'parallel' | 'midpoint' | 'distance' | 'perp_bisector' | 'function';
+  type: 'point' | 'line' | 'rectangle' | 'circle' | 'text' | 'polygon' | 'angle' | 'perpendicular' | 'parallel' | 'midpoint' | 'distance' | 'perp_bisector' | 'function' | 'image';
   name: string;
   visible: boolean;
   selected: boolean;
@@ -36,14 +36,26 @@ export interface DrawingObject {
   // Type-specific properties
   points?: Point[]; // For lines, polygons, bezier curves
   radius?: number; // For circles, arcs
-  width?: number; // For rectangles
-  height?: number; // For rectangles
+  width?: number; // For rectangles, images
+  height?: number; // For rectangles, images
   text?: string; // For text objects
   fontSize?: number; // For text objects
   fontFamily?: string; // For text objects
   fontWeight?: 'normal' | 'bold'; // For text objects
   fontStyle?: 'normal' | 'italic'; // For text objects
   textDecoration?: 'none' | 'underline'; // For text objects
+  isMath?: boolean; // Add this property for text objects
+  
+  // Image properties
+  imageData?: string; // Base64 encoded image data
+  imageUrl?: string; // Image URL or path
+  originalWidth?: number; // Original image dimensions
+  originalHeight?: number; // Original image dimensions
+  rotation?: number; // Rotation angle in degrees
+  scaleX?: number; // Scale factor X
+  scaleY?: number; // Scale factor Y
+  flipX?: boolean; // Horizontal flip
+  flipY?: boolean; // Vertical flip
   
   // Arrow properties for lines
   arrowStart?: 'none' | 'arrow' | 'stealth' | 'latex';
@@ -200,7 +212,7 @@ export interface AppActions {
   // Text editing
   startTextEditing: (position: Point) => void;
   cancelTextEditing: () => void;
-  finishTextEditing: (text: string) => void;
+  finishTextEditing: (text: string, isMath?: boolean) => void;
   
   // Utility
   getSelectedObjects: () => DrawingObject[];
@@ -1111,7 +1123,7 @@ export const useAppStore = create<AppStore>()(
           });
         },
 
-        finishTextEditing: (text: string) => {
+        finishTextEditing: (text: string, isMath = false) => {
           const { textEditorPosition } = get();
           if (textEditorPosition && text.trim()) {
             get().addObject({
@@ -1130,6 +1142,7 @@ export const useAppStore = create<AppStore>()(
               fontWeight: 'normal',
               fontStyle: 'normal',
               textDecoration: 'none',
+              isMath,
             });
           }
           
@@ -1138,6 +1151,8 @@ export const useAppStore = create<AppStore>()(
             state.textEditorPosition = null;
           });
         },
+
+
       }))
     ),
     { name: 'tikzsketch-store' }

@@ -14,7 +14,8 @@ import {
   CornerUpRight,
   Target,
   Route,
-  Crosshair
+  Crosshair,
+  Image
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -27,6 +28,7 @@ export type Tool =
   | 'circle' 
   | 'polygon'
   | 'text'
+  | 'image'
   | 'perpendicular'
   | 'parallel'
   | 'midpoint'
@@ -53,6 +55,7 @@ const basicTools = [
 const advancedTools = [
   { id: 'polygon' as Tool, icon: Pentagon, label: 'Polygon', shortcut: 'G' },
   { id: 'text' as Tool, icon: Type, label: 'Text', shortcut: 'T' },
+  { id: 'image' as Tool, icon: Image, label: 'Image', shortcut: 'I' },
 ];
 
 const geometryTools = [

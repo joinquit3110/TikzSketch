@@ -1,14 +1,54 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Stage, Layer, Line, Circle, Rect, Text, Transformer } from 'react-konva';
+import { Stage, Layer, Line, Circle, Rect, Text, Transformer, Image as KonvaImage } from 'react-konva';
 import Konva from 'konva';
 import { useAppStore } from '@/lib/store';
 import type { DrawingObject, Point } from '@/lib/store';
-import LaTeX from './LaTeX';
+
 
 interface CanvasProps {
   activeTool?: string;
+}
+
+// Separate component for rendering images
+interface ImageObjectProps {
+  obj: DrawingObject;
+  commonProps: any;
+}
+
+function ImageObject({ obj, commonProps }: ImageObjectProps) {
+  const [konvaImage, setKonvaImage] = useState<HTMLImageElement | null>(null);
+  
+  useEffect(() => {
+    if (obj.imageData) {
+      const imageElement = new Image();
+      imageElement.onload = () => {
+        setKonvaImage(imageElement);
+      };
+      imageElement.src = obj.imageData;
+    }
+  }, [obj.imageData]);
+  
+  if (!konvaImage || !obj.width || !obj.height) {
+    return null;
+  }
+  
+  return (
+    <KonvaImage
+      {...commonProps}
+      image={konvaImage}
+      x={obj.position.x + obj.width / 2}
+      y={obj.position.y + obj.height / 2}
+      width={obj.width}
+      height={obj.height}
+      offsetX={obj.width / 2}
+      offsetY={obj.height / 2}
+      rotation={obj.rotation || 0}
+      scaleX={(obj.scaleX || 1) * (obj.flipX ? -1 : 1)}
+      scaleY={(obj.scaleY || 1) * (obj.flipY ? -1 : 1)}
+    />
+  );
 }
 
 export default function Canvas({ activeTool = 'select' }: CanvasProps) {
@@ -68,6 +108,68 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
 
   // State for text editor
   const [textEditorValue, setTextEditorValue] = useState('');
+  const [isMathMode, setIsMathMode] = useState(false);
+
+  // Image upload handler
+  const handleImageUpload = useCallback((position: Point) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const imageData = event.target?.result as string;
+          
+          // Create an image element to get dimensions
+          const img = new Image();
+          img.onload = () => {
+            const maxSize = 200; // Default size
+            const aspectRatio = img.width / img.height;
+            let width, height;
+            
+            if (aspectRatio > 1) {
+              width = maxSize;
+              height = maxSize / aspectRatio;
+            } else {
+              width = maxSize * aspectRatio;
+              height = maxSize;
+            }
+            
+            // Extract filename without extension and clean it for LaTeX
+            const filename = file.name.split('.')[0].replace(/[^a-zA-Z0-9_-]/g, '_');
+            
+            addObject({
+              type: 'image',
+              name: filename,
+              visible: true,
+              selected: false,
+              showName: true,
+              position: position,
+              stroke: 'transparent',
+              strokeWidth: 0,
+              fill: 'transparent',
+              width: width,
+              height: height,
+              imageData: imageData,
+              imageUrl: file.name, // Store original filename
+              originalWidth: img.width,
+              originalHeight: img.height,
+              rotation: 0,
+              scaleX: 1,
+              scaleY: 1,
+              flipX: false,
+              flipY: false,
+            });
+          };
+          img.src = imageData;
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    input.click();
+  }, [addObject]);
 
   // Helper function to create arrow points
   const getArrowPoints = (x: number, y: number, angle: number, size: number, arrowType: string) => {
@@ -173,7 +275,63 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
       );
     }
 
-    // Note: Origin marker 'O' is now rendered as HTML overlay with LaTeX
+    // Add coordinate labels if showCoordinates is enabled
+    if (canvas.showCoordinates) {
+      // Smart label spacing: show every grid line for zoom > 1.5, every 2 units otherwise
+      const labelSpacing = canvas.zoom > 1.5 ? spacing : spacing * 2;
+      
+      // X-axis labels
+      for (let x = startX; x <= endX; x += labelSpacing) {
+        if (x !== 0) { // Skip origin
+          const tikzValue = (x / 28); // Convert to TikZ coordinates
+          // Only show integer values or clean half-integers
+          const displayValue = tikzValue === Math.floor(tikzValue) ? 
+            tikzValue.toFixed(0) : 
+            (tikzValue * 2 === Math.floor(tikzValue * 2) ? tikzValue.toFixed(1) : tikzValue.toFixed(2));
+          
+          lines.push(
+            <Text
+              key={`label-x-${x}`}
+              x={x}
+              y={8}
+              text={displayValue}
+              fontSize={10}
+              fill="#666666"
+              align="center"
+              verticalAlign="middle"
+              listening={false}
+            />
+          );
+        }
+      }
+      
+      // Y-axis labels  
+      for (let y = startY; y <= endY; y += labelSpacing) {
+        if (y !== 0) { // Skip origin
+          const tikzValue = (-y / 28); // Convert to TikZ coordinates (flip Y)
+          // Only show integer values or clean half-integers
+          const displayValue = tikzValue === Math.floor(tikzValue) ? 
+            tikzValue.toFixed(0) : 
+            (tikzValue * 2 === Math.floor(tikzValue * 2) ? tikzValue.toFixed(1) : tikzValue.toFixed(2));
+          
+          lines.push(
+            <Text
+              key={`label-y-${y}`}
+              x={-15}
+              y={y}
+              text={displayValue}
+              fontSize={10}
+              fill="#666666"
+              align="center"
+              verticalAlign="middle"
+              listening={false}
+            />
+          );
+        }
+      }
+      
+
+    }
 
     return lines;
   };
@@ -537,6 +695,13 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
       return;
     }
 
+    // Handle image upload
+    if (activeTool === 'image') {
+      const snappedPos = getSnappedPosition(worldPos);
+      handleImageUpload(snappedPos);
+      return;
+    }
+
     // Handle standard drawing tools
     if (['line', 'rectangle', 'circle'].includes(activeTool)) {
       const snappedPos = getSnappedPosition(worldPos);
@@ -569,7 +734,8 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
     findCurveForPoint,
     startTextEditing,
     cancelTextEditing,
-    setTextEditorValue
+    setTextEditorValue,
+    handleImageUpload
   ]);
 
   // Handle mouse move
@@ -689,21 +855,8 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
           }
         }
         
-        // Handle line dragging - update visual position only during drag
-        if (obj.type === 'line' && obj.points && obj.points.length >= 2) {
-          const deltaX = newPos.x - obj.position.x;
-          const deltaY = newPos.y - obj.position.y;
-          
-          // Update line points visually during drag
-          const updatedPoints = obj.points.map(point => ({
-            x: point.x + deltaX,
-            y: point.y + deltaY
-          }));
-          
-          // Update the line points in real-time for visual feedback
-          e.target.points(updatedPoints.flatMap(p => [p.x, p.y]));
-        }
-        
+        // For images, position is center for display but we need to track top-left internally
+        // during drag move, just set the visual position directly
         e.target.position(newPos);
       },
       onDragEnd: (e: any) => {
@@ -729,10 +882,11 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
           }
         }
         
-        // Handle line dragging - update all points relative to position change
-        if (obj.type === 'line' && obj.points && obj.points.length >= 2) {
-          const deltaX = newPos.x - obj.position.x;
-          const deltaY = newPos.y - obj.position.y;
+        // UNIFIED logic for all objects with points (line, polygon, etc.)
+        if ((obj.type === 'line' || obj.type === 'polygon') && obj.points && obj.points.length > 0) {
+          // For objects with points: drag delta = visual position change
+          const deltaX = newPos.x;  // newPos is the drag delta since we render at (0,0)
+          const deltaY = newPos.y;
           
           const updatedPoints = obj.points.map(point => ({
             x: point.x + deltaX,
@@ -740,11 +894,24 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
           }));
           
           useAppStore.getState().updateObject(obj.id, { 
-            position: newPos,
+            position: { x: 0, y: 0 }, // Reset position since points are absolute
             points: updatedPoints
           });
+          
+          // Reset visual position after updating data
+          e.target.position({ x: 0, y: 0 });
         } else {
-          useAppStore.getState().updateObject(obj.id, { position: newPos });
+          // Handle image position update - convert from center back to top-left corner
+          if (obj.type === 'image') {
+            const adjustedPos = {
+              x: newPos.x - (obj.width || 200) / 2,
+              y: newPos.y - (obj.height || 150) / 2
+            };
+            useAppStore.getState().updateObject(obj.id, { position: adjustedPos });
+          } else {
+            // Simple position update for shapes without points
+            useAppStore.getState().updateObject(obj.id, { position: newPos });
+          }
         }
         
         // Update constrained objects
@@ -796,11 +963,13 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
           const points = obj.points.flatMap(p => [p.x, p.y]);
           const elements = [];
           
-          // Render the main line
+          // Render the main line - points are absolute, no position offset needed
           elements.push(
             <Line
               key={obj.id}
               {...commonProps}
+              x={0}
+              y={0}
               points={points}
             />
           );
@@ -859,19 +1028,25 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
         return null;
 
       case 'text':
+        const text = obj.text || 'Text';
+        const fontSize = obj.fontSize || 16;
+        const textWidth = text.length * fontSize * 0.5;
         return (
           <Text
             key={obj.id}
             {...commonProps}
             x={obj.position.x}
             y={obj.position.y}
-            text={obj.text || 'Text'}
-            fontSize={obj.fontSize || 16}
+            text={text}
+            fontSize={fontSize}
             fontFamily={obj.fontFamily || 'Arial'}
             fontStyle={obj.fontStyle === 'italic' ? 'italic' : 'normal'}
             fontWeight={obj.fontWeight === 'bold' ? 'bold' : 'normal'}
             textDecoration={obj.textDecoration === 'underline' ? 'underline' : ''}
             fill={getColorWithOpacity(obj.stroke, obj.strokeOpacity)}
+            align="left"
+            verticalAlign="middle"
+            offsetX={textWidth / 2}
           />
         );
 
@@ -882,6 +1057,8 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
             <Line
               key={obj.id}
               {...commonProps}
+              x={0}
+              y={0}
               points={points}
               closed={true}
             />
@@ -921,6 +1098,18 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
                 listening={false}
               />
             </>
+          );
+        }
+        return null;
+
+      case 'image':
+        if (obj.imageData && obj.width && obj.height) {
+          return (
+            <ImageObject
+              key={obj.id}
+              obj={obj}
+              commonProps={commonProps}
+            />
           );
         }
         return null;
@@ -1052,6 +1241,26 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
             };
           }
           break;
+        case 'image':
+          bounds = {
+            x: obj.position.x - 5,
+            y: obj.position.y - 5,
+            width: (obj.width || 200) + 10,
+            height: (obj.height || 150) + 10
+          };
+          break;
+        case 'text':
+          // Text is centered, so calculate bounds around center
+          const fontSize = obj.fontSize || 16;
+          const textWidth = (obj.text?.length || 4) * fontSize * 0.6;
+          const textHeight = fontSize;
+          bounds = {
+            x: obj.position.x - textWidth/2 - 5,
+            y: obj.position.y - textHeight/2 - 5,
+            width: textWidth + 10,
+            height: textHeight + 10
+          };
+          break;
         default:
           bounds = {
             x: obj.position.x - 20,
@@ -1103,6 +1312,17 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
           case 'point':
             namePosition.x = obj.position.x + 10; // Right of point
             namePosition.y = obj.position.y - 15; // Above point
+            break;
+          case 'image':
+            // Image position is top-left corner, so calculate center for name
+            namePosition.x = obj.position.x + (obj.width || 200) / 2; // Center horizontally
+            namePosition.y = obj.position.y + (obj.height || 150) + 15; // Below image
+            break;
+          case 'text':
+            // Text is centered, so position name above it
+            const fontSize = obj.fontSize || 16;
+            namePosition.x = obj.position.x;
+            namePosition.y = obj.position.y - fontSize / 2 - 15; // Above text
             break;
           default:
             namePosition.x = obj.position.x;
@@ -1259,14 +1479,16 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
   // Handle text editor
   const handleTextSubmit = useCallback(() => {
     if (textEditorValue.trim()) {
-      finishTextEditing(textEditorValue.trim());
+      finishTextEditing(textEditorValue.trim(), isMathMode);
       setTextEditorValue('');
+      setIsMathMode(false);
     }
-  }, [textEditorValue, finishTextEditing]);
+  }, [textEditorValue, finishTextEditing, isMathMode]);
 
   const handleTextCancel = useCallback(() => {
-    cancelTextEditing();
     setTextEditorValue('');
+    setIsMathMode(false);
+    cancelTextEditing();
   }, [cancelTextEditing]);
 
   const handleTextKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1278,22 +1500,7 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
     }
   }, [handleTextSubmit, handleTextCancel]);
 
-  // Calculate origin marker position for HTML overlay
-  const getOriginMarkerPosition = () => {
-    if (!canvas.gridVisible) return null;
-    
-    // Origin in world coordinates
-    const originWorldX = -15; // Left offset
-    const originWorldY = 15;  // Down offset (45 degree position)
-    
-    // Convert to screen coordinates
-    const screenX = originWorldX * canvas.zoom + canvas.pan.x;
-    const screenY = originWorldY * canvas.zoom + canvas.pan.y;
-    
-    return { x: screenX, y: screenY };
-  };
 
-  const originMarkerPos = getOriginMarkerPosition();
 
   return (
     <div className="w-full h-full relative bg-gray-50 overflow-hidden">
@@ -1416,27 +1623,18 @@ export default function Canvas({ activeTool = 'select' }: CanvasProps) {
             >
               ✕
             </button>
+            <button
+              onClick={() => setIsMathMode((v) => !v)}
+              className={`px-2 py-1 text-xs rounded ${isMathMode ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'} hover:bg-green-600`}
+              title="Math Mode"
+            >
+              f(x)
+            </button>
           </div>
         </div>
       )}
 
-      {/* LaTeX Origin Marker Overlay */}
-      {originMarkerPos && (
-        <div
-          className="absolute z-10 pointer-events-none"
-          style={{
-            left: originMarkerPos.x - 8, // Center horizontally
-            top: originMarkerPos.y - 8,  // Center vertically
-          }}
-        >
-          <LaTeX 
-            className="text-gray-600 opacity-80"
-            style={{ fontSize: '14px' }}
-          >
-            O
-          </LaTeX>
-        </div>
-      )}
+
     </div>
   );
 } 
